@@ -177,8 +177,8 @@
                 <input id="online-player-name" type="text" maxlength="14" value="Player 1" placeholder="Your player name"
                     class="w-full mb-2 bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-400">
                 <div class="grid grid-cols-2 gap-2">
-                    <button id="btn-create-room" class="py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-extrabold shadow-lg">CREATE ROOM</button>
-                    <button id="btn-join-room" class="py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-extrabold">JOIN ROOM</button>
+                    <button type="button" id="btn-create-room" onclick="window.createOnlineRoom && window.createOnlineRoom()" class="py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-extrabold shadow-lg">CREATE ROOM</button>
+                    <button type="button" id="btn-join-room" class="py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-extrabold">JOIN ROOM</button>
                 </div>
                 <div class="flex gap-2 mt-2 items-center">
                     <div id="room-code-entry" class="hidden min-w-0 flex-1">
@@ -335,35 +335,70 @@
         async function createOnlineRoom() {
             if (roomActionBusy) return;
             roomActionBusy = true;
-            const createButton=document.getElementById('btn-create-room');
-            createButton.disabled=true;
+            const createButton = document.getElementById('btn-create-room');
+            const originalLabel = createButton.textContent;
+            createButton.disabled = true;
+            createButton.textContent = 'CREATING…';
+            roomStatus('Connecting to Firebase and creating your room…');
             try {
-            if (!firebaseReady && !(await initFirebaseOnline())) return;
-            if (roomCode) await leaveOnlineRoom(false);
-            joinCodePromptOpen=false;
-            document.getElementById('room-code-entry').classList.add('hidden');
-            document.getElementById('btn-join-room').textContent='JOIN ROOM';
-            const code=makeRoomCode(), maxPlayers=Number(document.getElementById('room-player-limit').value)||4;
-            const room={
-                hostUid:myUid, status:'lobby', maxPlayers,
-                createdAt:firebase.database.ServerValue.TIMESTAMP,
-                members:{[myUid]:true},
-                seats:{0:{uid:myUid,name:localPlayerName(),type:'human'}},
-                game:null
-            };
-            try {
-                await firebaseDb.ref('rooms/'+code).set(room);
-                roomCode=code; roomIsHost=true; roomSeat=0;
-                roomSnapshot=room;
+                if (!firebaseReady) {
+                    const connected = await initFirebaseOnline();
+                    if (!connected) {
+                        roomStatus('Cannot create room yet. Check the Firebase Web App config, enable Anonymous Authentication, and verify the Realtime Database URL.');
+                        return;
+                    }
+                }
+                if (!firebaseDb || !myUid) {
+                    roomStatus('Firebase sign-in is not ready. Refresh the page and try again.');
+                    return;
+                }
+                if (roomCode) await leaveOnlineRoom(false);
+                joinCodePromptOpen = false;
+                document.getElementById('room-code-entry').classList.add('hidden');
+                document.getElementById('room-code-input').value = '';
+                document.getElementById('btn-join-room').textContent = 'JOIN ROOM';
+                const maxPlayers = Number(document.getElementById('room-player-limit').value) || 4;
+                let code = '', created = false;
+                for (let attempt = 0; attempt < 8 && !created; attempt++) {
+                    code = makeRoomCode();
+                    const room = {
+                        hostUid: myUid, status: 'lobby', maxPlayers,
+                        createdAt: firebase.database.ServerValue.TIMESTAMP,
+                        members: { [myUid]: true },
+                        seats: { 0: { uid: myUid, name: localPlayerName(), type: 'human' } },
+                        game: null
+                    };
+                    const result = await firebaseDb.ref('rooms/' + code).transaction(
+                        current => current === null ? room : undefined, undefined, false
+                    );
+                    created = !!result.committed;
+                }
+                if (!created) {
+                    roomStatus('Could not reserve a room code. Please tap CREATE ROOM again.');
+                    return;
+                }
+                roomCode = code; roomIsHost = true; roomSeat = 0;
+                roomSnapshot = {
+                    hostUid: myUid, status: 'lobby', maxPlayers,
+                    members: { [myUid]: true },
+                    seats: { 0: { uid: myUid, name: localPlayerName(), type: 'human' } },
+                    game: null
+                };
                 attachRoomListeners();
-                renderRoomLobby(room);
-                roomStatus('Room created! Your code is shown below. Share it with your friends.');
-            } catch(e) { console.error(e); roomStatus('Could not create room: '+(e.message||'Check Firebase database rules and connection.')); }
+                renderRoomLobby(roomSnapshot);
+                document.getElementById('room-code-display').textContent = code;
+                roomStatus('Room created! Share this code with your friends so they can join.');
+            } catch (e) {
+                console.error('Create room failed:', e);
+                const detail = e && (e.message || e.code) ? (e.message || e.code) : 'Unknown Firebase error';
+                roomStatus('Room creation failed: ' + detail + '. Check Realtime Database rules and the databaseURL in your Firebase config.');
             } finally {
-                roomActionBusy=false;
-                createButton.disabled=false;
+                roomActionBusy = false;
+                createButton.disabled = false;
+                createButton.textContent = originalLabel;
             }
         }
+        window.createOnlineRoom = createOnlineRoom;
         async function joinOnlineRoom() {
             if (roomActionBusy) return;
             const entry=document.getElementById('room-code-entry');
@@ -1675,7 +1710,6 @@
 
             // UI Button Listeners
             document.getElementById('btn-start-game').addEventListener('click', startGame);
-            document.getElementById('btn-create-room').addEventListener('click', createOnlineRoom);
             document.getElementById('btn-join-room').addEventListener('click', joinOnlineRoom);
             document.getElementById('btn-start-online').addEventListener('click', startOnlineMatch);
             document.getElementById('btn-leave-room').addEventListener('click', () => leaveOnlineRoom());
