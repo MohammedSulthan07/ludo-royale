@@ -1,0 +1,31 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      "$room": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('hostUid').val() === auth.uid) || data.child('hostUid').val() === auth.uid)",
+        "members": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (newData.val() === true || !newData.exists()) && (root.child('rooms').child($room).child('status').val() === 'lobby' || !newData.exists())",
+            ".validate": "!newData.exists() || newData.val() === true"
+          }
+        },
+        "seats": {
+          "$seat": {
+            ".write": "auth != null && (auth.uid === root.child('rooms').child($room).child('hostUid').val() || (!data.exists() && root.child('rooms').child($room).child('status').val() === 'lobby' && newData.child('uid').val() === auth.uid && root.child('rooms').child($room).child('members').child(auth.uid).val() === true) || (data.child('uid').val() === auth.uid && !newData.exists()))",
+            ".validate": "!newData.exists() || (newData.child('uid').isString() && newData.child('name').isString() && newData.child('type').val() === 'human')"
+          }
+        },
+        "commands": {
+          ".read": "auth != null && auth.uid === root.child('rooms').child($room).child('hostUid').val()",
+          "$command": {
+            ".write": "auth != null && (auth.uid === root.child('rooms').child($room).child('hostUid').val() || (root.child('rooms').child($room).child('members').child(auth.uid).val() === true && newData.child('uid').val() === auth.uid))",
+            ".validate": "!newData.exists() || newData.child('uid').val() === auth.uid"
+          }
+        }
+      }
+    }
+  }
+}

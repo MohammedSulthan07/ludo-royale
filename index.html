@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Ludo Royale</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        }
+        .pulse-ring {
+            animation: pulseRing 1.8s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+        }
+        @keyframes pulseRing {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6); }
+            70% { transform: scale(1); box-shadow: 0 0 0 12px rgba(255, 255, 255, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
+        }
+        .dice-pip {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #1e293b;
+        }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- 3D Viewport -->
+    <div id="canvas-container"></div>
+
+    <!-- Top Header / Controls -->
+    <div id="hud-top" class="hidden fixed top-0 left-0 right-0 z-20 p-3 sm:p-4 flex items-center justify-between pointer-events-none">
+        <div class="glass-panel px-4 py-2 rounded-2xl flex items-center gap-3 pointer-events-auto">
+            <div class="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></div>
+            <span class="font-bold tracking-wide text-sm sm:text-base bg-gradient-to-r from-amber-200 to-yellow-500 bg-clip-text text-transparent">LUDO 3D ROYALE</span>
+        </div>
+
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="btn-camera-reset" title="Reset Camera" class="glass-panel hover:bg-slate-800/90 active:scale-95 transition p-2.5 rounded-xl text-slate-200 text-xs sm:text-sm font-semibold flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                <span class="hidden sm:inline">Reset View</span>
+            </button>
+            <button id="btn-sound" title="Toggle Sound" class="glass-panel hover:bg-slate-800/90 active:scale-95 transition p-2.5 rounded-xl text-slate-200">
+                <svg id="icon-sound-on" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+                <svg id="icon-sound-off" class="w-4 h-4 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
+            </button>
+            <button id="btn-menu" class="glass-panel hover:bg-slate-800/90 active:scale-95 transition px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-200">
+                Menu
+            </button>
+        </div>
+    </div>
+
+    <!-- Player Corner Badges -->
+    <div id="player-cards" class="hidden fixed inset-0 z-10 pointer-events-none p-3 sm:p-5">
+        <!-- Red (Bottom-Left) -->
+        <div id="card-0" class="fixed bottom-24 sm:bottom-6 left-3 sm:left-6 glass-panel rounded-2xl p-2.5 sm:p-3.5 w-36 sm:w-48 transition-all duration-300 border-l-4 border-rose-500">
+            <div class="flex items-center justify-between">
+                <span id="name-0" class="font-bold text-xs sm:text-sm truncate text-rose-300">Player 1</span>
+                <span id="score-0" class="text-xs font-extrabold bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full">0/4</span>
+            </div>
+            <div id="status-0" class="text-[11px] text-slate-400 mt-1 truncate">Waiting...</div>
+        </div>
+
+        <!-- Green (Top-Left) -->
+        <div id="card-1" class="fixed top-16 sm:top-20 left-3 sm:left-6 glass-panel rounded-2xl p-2.5 sm:p-3.5 w-36 sm:w-48 transition-all duration-300 border-l-4 border-emerald-500">
+            <div class="flex items-center justify-between">
+                <span id="name-1" class="font-bold text-xs sm:text-sm truncate text-emerald-300">Player 2</span>
+                <span id="score-1" class="text-xs font-extrabold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">0/4</span>
+            </div>
+            <div id="status-1" class="text-[11px] text-slate-400 mt-1 truncate">Waiting...</div>
+        </div>
+
+        <!-- Yellow (Top-Right) -->
+        <div id="card-2" class="fixed top-16 sm:top-20 right-3 sm:right-6 glass-panel rounded-2xl p-2.5 sm:p-3.5 w-36 sm:w-48 transition-all duration-300 border-r-4 border-amber-400 text-right">
+            <div class="flex items-center justify-between flex-row-reverse">
+                <span id="name-2" class="font-bold text-xs sm:text-sm truncate text-amber-300">Player 3</span>
+                <span id="score-2" class="text-xs font-extrabold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">0/4</span>
+            </div>
+            <div id="status-2" class="text-[11px] text-slate-400 mt-1 truncate">Waiting...</div>
+        </div>
+
+        <!-- Blue (Bottom-Right) -->
+        <div id="card-3" class="fixed bottom-24 sm:bottom-6 right-3 sm:right-6 glass-panel rounded-2xl p-2.5 sm:p-3.5 w-36 sm:w-48 transition-all duration-300 border-r-4 border-sky-500 text-right">
+            <div class="flex items-center justify-between flex-row-reverse">
+                <span id="name-3" class="font-bold text-xs sm:text-sm truncate text-sky-300">Player 4</span>
+                <span id="score-3" class="text-xs font-extrabold bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full">0/4</span>
+            </div>
+            <div id="status-3" class="text-[11px] text-slate-400 mt-1 truncate">Waiting...</div>
+        </div>
+    </div>
+
+    <!-- Bottom Center Action & Dice Dock -->
+    <div id="hud-bottom" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 w-full max-w-md px-4 pointer-events-none">
+        <!-- Toast / Turn Banner -->
+        <div id="turn-banner" class="glass-panel px-4 py-1.5 rounded-full text-xs sm:text-sm font-semibold text-slate-100 shadow-lg transition-all">
+            Red's Turn — Roll the Dice!
+        </div>
+
+        <!-- Dice Trigger Button -->
+        <button id="btn-roll-dice" class="pointer-events-auto group relative flex items-center gap-3 px-6 py-3 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-600 to-pink-600 hover:from-indigo-400 hover:to-pink-500 active:scale-95 transition-all shadow-xl shadow-indigo-950/60 border border-white/25 pulse-ring">
+            <div id="dice-preview" class="w-9 h-9 bg-white rounded-xl shadow-inner flex items-center justify-center text-slate-900 font-extrabold text-xl transition-transform group-hover:rotate-12">
+                🎲
+            </div>
+            <div class="text-left">
+                <div id="roll-btn-title" class="font-extrabold text-sm sm:text-base tracking-wide text-white">ROLL DICE</div>
+                <div id="roll-btn-sub" class="text-[11px] text-indigo-100/80">Tap or click 3D dice</div>
+            </div>
+        </button>
+    </div>
+
+    <!-- Secret "Ai" Player Dice Selector Modal (Only appears when active player's name is "Ai") -->
+    <div id="ai-dice-modal" class="hidden fixed inset-0 z-40 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
+        <div class="glass-panel rounded-3xl p-5 w-full max-w-xs border border-white/20 shadow-2xl transform transition-all mb-20 sm:mb-0">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-300">Select Roll Outcome</span>
+                <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+            </div>
+            <div class="grid grid-cols-3 gap-2.5">
+                <button data-val="1" class="ai-die-choice bg-white hover:bg-indigo-50 active:scale-95 text-slate-900 font-extrabold text-2xl py-3.5 rounded-2xl shadow-md transition">1</button>
+                <button data-val="2" class="ai-die-choice bg-white hover:bg-indigo-50 active:scale-95 text-slate-900 font-extrabold text-2xl py-3.5 rounded-2xl shadow-md transition">2</button>
+                <button data-val="3" class="ai-die-choice bg-white hover:bg-indigo-50 active:scale-95 text-slate-900 font-extrabold text-2xl py-3.5 rounded-2xl shadow-md transition">3</button>
+                <button data-val="4" class="ai-die-choice bg-white hover:bg-indigo-50 active:scale-95 text-slate-900 font-extrabold text-2xl py-3.5 rounded-2xl shadow-md transition">4</button>
+                <button data-val="5" class="ai-die-choice bg-white hover:bg-indigo-50 active:scale-95 text-slate-900 font-extrabold text-2xl py-3.5 rounded-2xl shadow-md transition">5</button>
+                <button data-val="6" class="ai-die-choice bg-white hover:bg-indigo-50 active:scale-95 text-slate-900 font-extrabold text-2xl py-3.5 rounded-2xl shadow-md transition">6</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup / Start Screen Modal -->
+    <div id="setup-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md">
+        <div class="glass-panel rounded-3xl p-6 sm:p-8 w-full max-w-lg max-h-[94vh] overflow-y-auto border border-white/15 shadow-2xl">
+            <div class="text-center mb-6">
+                <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 to-rose-500 shadow-lg mb-3 text-3xl">
+                    👑
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-amber-100 to-amber-300 bg-clip-text text-transparent">
+                    3D Ludo Royale
+                </h1>
+                <p class="text-slate-400 text-xs sm:text-sm mt-1">Classic 4-Player Board Game • Drag to Orbit • Click to Play</p>
+            </div>
+
+
+            <!-- Online Room Controls (same glass / slate theme) -->
+            <div class="bg-slate-900/70 border border-indigo-400/30 rounded-2xl p-3.5 mb-5">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-200">Online Room</span>
+                    <span id="connection-state" class="text-[10px] text-amber-300">Connecting…</span>
+                </div>
+                <input id="online-player-name" type="text" maxlength="14" value="Player 1" placeholder="Your player name"
+                    class="w-full mb-2 bg-slate-800/90 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-400">
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-create-room" class="py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-extrabold shadow-lg">CREATE ROOM</button>
+                    <button id="btn-join-room" class="py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-extrabold">JOIN ROOM</button>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <input id="room-code-input" type="text" maxlength="6" placeholder="6-digit room code"
+                        class="min-w-0 flex-1 uppercase tracking-[0.2em] bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white text-center focus:outline-none focus:border-indigo-400">
+                    <select id="room-player-limit" class="bg-slate-800 border border-slate-700 rounded-xl px-2 text-xs text-white">
+                        <option value="2">2 players</option>
+                        <option value="3">3 players</option>
+                        <option value="4" selected>4 players</option>
+                    </select>
+                </div>
+                <div id="room-status" class="text-[11px] text-slate-300 mt-2 leading-relaxed">Create a room or enter a room code to play across different phones. Local play remains available below.</div>
+                <div id="room-lobby" class="hidden mt-3 border-t border-white/10 pt-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <div>
+                            <div class="text-[10px] uppercase tracking-wider text-slate-400">Room code</div>
+                            <div id="room-code-display" class="text-xl font-extrabold tracking-[0.25em] text-amber-300">------</div>
+                        </div>
+                        <button id="btn-copy-room" class="px-3 py-2 rounded-xl bg-indigo-500/20 border border-indigo-300/20 text-indigo-100 text-xs font-bold">COPY CODE</button>
+                    </div>
+                    <div id="room-player-list" class="mt-2 text-xs text-slate-300 space-y-1"></div>
+                    <div id="room-host-actions" class="hidden mt-3">
+                        <button id="btn-start-online" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 text-slate-950 font-extrabold text-sm">START ONLINE MATCH</button>
+                    </div>
+                    <button id="btn-leave-room" class="mt-2 w-full py-2 rounded-xl border border-rose-400/20 text-rose-200 text-xs font-semibold">LEAVE ROOM</button>
+                </div>
+            </div>
+
+            <div id="local-player-setup" class="space-y-3 mb-6">
+                <!-- Player 1 (Red) -->
+                <div class="flex items-center gap-3 bg-slate-900/70 p-2.5 rounded-2xl border border-rose-500/30">
+                    <div class="w-8 h-8 rounded-xl bg-rose-500 flex items-center justify-center font-bold text-white shadow-md shrink-0">R</div>
+                    <input id="input-p0" type="text" value="Player 1" maxlength="14" placeholder="Red Player Name" class="bg-transparent border-none focus:outline-none text-sm font-semibold text-white w-full">
+                    <select id="type-p0" class="bg-slate-800 text-xs font-semibold text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:outline-none">
+                        <option value="human" selected>Human</option>
+                        <option value="bot">CPU Bot</option>
+                    </select>
+                </div>
+
+                <!-- Player 2 (Green) -->
+                <div class="flex items-center gap-3 bg-slate-900/70 p-2.5 rounded-2xl border border-emerald-500/30">
+                    <div class="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center font-bold text-white shadow-md shrink-0">G</div>
+                    <input id="input-p1" type="text" value="Player 2" maxlength="14" placeholder="Green Player Name" class="bg-transparent border-none focus:outline-none text-sm font-semibold text-white w-full">
+                    <select id="type-p1" class="bg-slate-800 text-xs font-semibold text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:outline-none">
+                        <option value="human" selected>Human</option>
+                        <option value="bot">CPU Bot</option>
+                    </select>
+                </div>
+
+                <!-- Player 3 (Yellow) -->
+                <div class="flex items-center gap-3 bg-slate-900/70 p-2.5 rounded-2xl border border-amber-400/30">
+                    <div class="w-8 h-8 rounded-xl bg-amber-400 flex items-center justify-center font-bold text-slate-950 shadow-md shrink-0">Y</div>
+                    <input id="input-p2" type="text" value="Player 3" maxlength="14" placeholder="Yellow Player Name" class="bg-transparent border-none focus:outline-none text-sm font-semibold text-white w-full">
+                    <select id="type-p2" class="bg-slate-800 text-xs font-semibold text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:outline-none">
+                        <option value="human" selected>Human</option>
+                        <option value="bot">CPU Bot</option>
+                    </select>
+                </div>
+
+                <!-- Player 4 (Blue) -->
+                <div class="flex items-center gap-3 bg-slate-900/70 p-2.5 rounded-2xl border border-sky-500/30">
+                    <div class="w-8 h-8 rounded-xl bg-sky-500 flex items-center justify-center font-bold text-white shadow-md shrink-0">B</div>
+                    <input id="input-p3" type="text" value="Player 4" maxlength="14" placeholder="Blue Player Name" class="bg-transparent border-none focus:outline-none text-sm font-semibold text-white w-full">
+                    <select id="type-p3" class="bg-slate-800 text-xs font-semibold text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 focus:outline-none">
+                        <option value="human" selected>Human</option>
+                        <option value="bot">CPU Bot</option>
+                    </select>
+                </div>
+            </div>
+
+            <button id="btn-start-game" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 active:scale-[0.98] transition font-extrabold text-base tracking-wide text-slate-950 shadow-lg shadow-emerald-950/50">
+                START 3D MATCH
+            </button>
+        </div>
+    </div>
+
+    <!-- Victory / Podium Modal -->
+    <div id="victory-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+        <div class="glass-panel rounded-3xl p-7 w-full max-w-md text-center border border-amber-400/30 shadow-2xl">
+            <div class="text-5xl mb-3">🏆</div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-amber-300 mb-1">Match Complete!</h2>
+            <p id="winner-subtitle" class="text-slate-300 text-sm mb-6">Standings</p>
+            <div id="standings-list" class="space-y-2.5 mb-6 text-left"></div>
+            <button id="btn-play-again" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 active:scale-95 transition font-extrabold text-slate-950 shadow-lg">
+                NEW GAME
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 3D LUDO ROYALE
+         * Complete 3D Board Game in Three.js with Authentic Ludo Rules,
+         * 4-Player Support, CPU Bots, Touch/Mouse Camera Orbit, WebAudio SFX,
+         * and the special "Ai" player dice control mechanic.
+         */
+
+
+        // ONLINE ROOMS — Firebase Realtime Database
+        // Paste the Firebase Web App config from Project settings > Your apps.
+        const firebaseConfig = {
+            apiKey: "PASTE_YOUR_FIREBASE_API_KEY",
+            authDomain: "PASTE_YOUR_PROJECT_ID.firebaseapp.com",
+            databaseURL: "https://PASTE_YOUR_DATABASE_NAME-default-rtdb.firebaseio.com",
+            projectId: "PASTE_YOUR_PROJECT_ID",
+            storageBucket: "PASTE_YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "PASTE_YOUR_MESSAGING_SENDER_ID",
+            appId: "PASTE_YOUR_FIREBASE_APP_ID"
+        };
+        let firebaseDb = null, firebaseReady = false, myUid = null;
+        let roomCode = null, roomRef = null, roomIsHost = false, roomSeat = -1;
+        let roomSnapshot = null, roomValueHandler = null, commandHandler = null;
+
+        function roomStatus(message) {
+            const el = document.getElementById('room-status');
+            if (el) el.textContent = message;
+        }
+        function connectionStatus(message, color='text-amber-300') {
+            const el = document.getElementById('connection-state');
+            if (el) { el.textContent = message; el.className = `text-[10px] ${color}`; }
+        }
+        async function initFirebaseOnline() {
+            try {
+                if (firebaseConfig.apiKey.startsWith('PASTE_')) {
+                    connectionStatus('Firebase setup needed');
+                    return false;
+                }
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                firebaseDb = firebase.database();
+                const credential = await firebase.auth().signInAnonymously();
+                myUid = credential.user.uid;
+                firebaseReady = true;
+                connectionStatus('Online ready', 'text-emerald-300');
+                return true;
+            } catch (e) {
+                console.error(e);
+                connectionStatus('Connection error', 'text-rose-300');
+                roomStatus('Firebase connection failed. Check your config and enable Anonymous Authentication.');
+                return false;
+            }
+        }
+        function localPlayerName() {
+            return (document.getElementById('online-player-name').value || 'Player').trim().slice(0,14) || 'Player';
+        }
+        function makeRoomCode() {
+            const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            return Array.from({length:6},()=>chars[Math.floor(Math.random()*chars.length)]).join('');
+        }
+        function escapeRoomText(value) {
+            return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        }
+        async function createOnlineRoom() {
+            if (!firebaseReady && !(await initFirebaseOnline())) return;
+            if (roomCode) await leaveOnlineRoom(false);
+            const code=makeRoomCode(), maxPlayers=Number(document.getElementById('room-player-limit').value)||4;
+            const room={
+                hostUid:myUid, status:'lobby', maxPlayers,
+                createdAt:firebase.database.ServerValue.TIMESTAMP,
+                members:{[myUid]:true},
+                seats:{0:{uid:myUid,name:localPlayerName(),type:'human'}},
+                game:null
+            };
+            try {
+                await firebaseDb.ref('rooms/'+code).set(room);
+                roomCode=code; roomIsHost=true; roomSeat=0;
+                attachRoomListeners();
+                roomStatus('Room created. Share the code and wait for players to join.');
+            } catch(e) { console.error(e); roomStatus('Could not create room: '+e.message); }
+        }
+        async function joinOnlineRoom() {
+            if (!firebaseReady && !(await initFirebaseOnline())) return;
+            const code=document.getElementById('room-code-input').value.trim().toUpperCase();
+            if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) { roomStatus('Enter a valid 6-character room code.'); return; }
+            const ref=firebaseDb.ref('rooms/'+code);
+            try {
+                const snap=await ref.once('value'), room=snap.val();
+                if (!room || room.status!=='lobby') { roomStatus('Room not found or match already started.'); return; }
+                const max=Number(room.maxPlayers||4);
+                let seat=-1;
+                for(let i=0;i<max;i++) if(!room.seats || !room.seats[i]) { seat=i; break; }
+                if(seat<0) { roomStatus('This room is full.'); return; }
+                await ref.child('members/'+myUid).set(true);
+                const claim=await ref.child('seats/'+seat).transaction(current =>
+                    current===null ? {uid:myUid,name:localPlayerName(),type:'human'} : undefined);
+                if(!claim.committed) {
+                    await ref.child('members/'+myUid).remove();
+                    roomStatus('That seat was just taken. Try joining again.'); return;
+                }
+                roomCode=code; roomIsHost=false; roomSeat=seat;
+                attachRoomListeners();
+                roomStatus('Joined! Waiting for the host to start the match.');
+            } catch(e) { console.error(e); roomStatus('Could not join room: '+e.message); }
+        }
+        function attachRoomListeners() {
+            roomRef=firebaseDb.ref('rooms/'+roomCode);
+            roomValueHandler=roomRef.on('value',snap=>{
+                const room=snap.val();
+                if(!room) { roomStatus('The room was closed.'); return; }
+                roomSnapshot=room;
+                if(room.status==='lobby') renderRoomLobby(room);
+                if(room.status==='playing' && room.game) {
+                    document.getElementById('room-lobby').classList.add('hidden');
+                    if(!gameState.started) startGameFromRoom(room.game);
+                    else if(!roomIsHost) applyRoomGameState(room.game);
+                }
+            });
+            if(roomIsHost) {
+                commandHandler=roomRef.child('commands').on('child_added',async snap=>{
+                    const command=snap.val();
+                    if(command) await processRoomCommand(command);
+                    snap.ref.remove();
+                });
+            }
+        }
+        function renderRoomLobby(room) {
+            document.getElementById('room-lobby').classList.remove('hidden');
+            document.getElementById('room-code-display').textContent=roomCode||'------';
+            document.getElementById('room-host-actions').classList.toggle('hidden',!roomIsHost);
+            document.getElementById('btn-start-game').classList.add('hidden');
+            document.getElementById('local-player-setup').classList.add('hidden');
+            const list=document.getElementById('room-player-list'); list.innerHTML='';
+            const colors=['text-rose-300','text-emerald-300','text-amber-300','text-sky-300'];
+            const labels=['RED','GREEN','YELLOW','BLUE'];
+            for(let i=0;i<Number(room.maxPlayers||4);i++) {
+                const player=room.seats && room.seats[i];
+                const row=document.createElement('div');
+                row.className='flex items-center justify-between bg-slate-800/70 rounded-lg px-3 py-2';
+                row.innerHTML=`<span class="${colors[i]} font-bold">${labels[i]}</span><span>${player?escapeRoomText(player.name):'Waiting for player…'}</span>`;
+                list.appendChild(row);
+            }
+        }
+        function serializeGameState() {
+            return {
+                players:gameState.players.map(p=>({id:p.id,name:p.name,type:p.type,colorName:p.colorName,
+                    tokens:p.tokens,finishedCount:p.finishedCount,rank:p.rank,uid:p.uid||null})),
+                currentTurn:gameState.currentTurn,phase:gameState.phase,diceValue:gameState.diceValue,
+                consecutiveSixes:gameState.consecutiveSixes,validTokens:gameState.validTokens||[],
+                rankings:(gameState.rankings||[]).map(p=>p.id),animatingDice:!!gameState.animatingDice
+            };
+        }
+        function publishRoomGameState() {
+            if(!roomCode || !roomIsHost || !roomRef) return;
+            roomRef.child('game').set(serializeGameState()).catch(e=>console.error('Game sync failed',e));
+        }
+        function restoreRoomState(data) {
+            gameState.players=data.players.map(p=>({...p,tokens:[...p.tokens]}));
+            gameState.currentTurn=data.currentTurn||0;
+            gameState.phase=data.phase||'IDLE';
+            gameState.diceValue=data.diceValue||1;
+            gameState.consecutiveSixes=data.consecutiveSixes||0;
+            gameState.validTokens=data.validTokens||[];
+            gameState.rankings=(data.rankings||[]).map(id=>gameState.players[id]).filter(Boolean);
+            for(let p=0;p<4;p++) {
+                document.getElementById(`name-${p}`).textContent=gameState.players[p].name;
+                for(let t=0;t<4;t++) tokenMeshes[p][t].position.copy(getTokenWorldPosition(p,t,gameState.players[p].tokens[t]));
+            }
+            resolveOverlappingTokens();
+            document.getElementById('setup-modal').classList.add('hidden');
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('hud-top').classList.remove('hidden');
+            document.getElementById('player-cards').classList.remove('hidden');
+            document.getElementById('hud-bottom').classList.remove('hidden');
+            document.getElementById('btn-roll-dice').classList.toggle('hidden',!isMyCurrentSeat());
+            document.getElementById('dice-preview').textContent=gameState.diceValue;
+            updateHUD();
+            clearHighlights();
+            if(gameState.phase==='SELECT_TOKEN') highlightValidTokens(gameState.currentTurn,gameState.validTokens);
+            if(gameState.phase==='GAME_OVER') showVictoryScreen();
+        }
+        function startGameFromRoom(data) {
+            if(!data || !data.players) return;
+            restoreRoomState(data);
+            gameState.started=true;
+            gameState.animatingDice=false;
+            if(roomIsHost) prepareTurn();
+        }
+        function applyRoomGameState(data) {
+            if(!data || !data.players || roomIsHost) return;
+            const previousPhase=gameState.phase;
+            restoreRoomState(data);
+            gameState.started=true;
+            if(data.phase==='ROLLING' && previousPhase!=='ROLLING') {
+                gameState.animatingDice=true; gameState.diceAnimTime=0;
+                gameState.diceStartQuat.copy(diceMesh.quaternion);
+                gameState.diceTargetQuat.copy(getTargetQuaternionForDice(gameState.diceValue));
+            } else {
+                gameState.animatingDice=false;
+                if(data.phase!=='ROLLING') diceMesh.quaternion.copy(getTargetQuaternionForDice(gameState.diceValue));
+            }
+        }
+        function isMyCurrentSeat() {
+            return !!(gameState.players && gameState.players[gameState.currentTurn] &&
+                gameState.players[gameState.currentTurn].uid===myUid);
+        }
+        function sendRoomCommand(command) {
+            if(roomRef && myUid) roomRef.child('commands').push({...command,uid:myUid});
+        }
+        async function processRoomCommand(command) {
+            if(!roomIsHost || !gameState.started) return;
+            const active=gameState.players[gameState.currentTurn];
+            if(!active || active.uid!==command.uid || gameState.phase==='GAME_OVER') return;
+            if(command.type==='roll' && gameState.phase==='IDLE' && active.name!=='Ai') {
+                executeDiceRoll(Math.floor(Math.random()*6)+1);
+            } else if(command.type==='rollChosen' && gameState.phase==='IDLE' && active.name==='Ai') {
+                const value=Number(command.value);
+                if(value>=1 && value<=6) executeDiceRoll(value);
+            } else if(command.type==='move' && gameState.phase==='SELECT_TOKEN') {
+                const token=Number(command.token);
+                if(gameState.validTokens.includes(token)) moveToken(active.id,token,gameState.diceValue,true);
+            }
+        }
+        async function leaveOnlineRoom(showMessage=true) {
+            if(roomRef && roomCode && myUid) {
+                try {
+                    if(roomIsHost) await roomRef.remove();
+                    else {
+                        await roomRef.child('seats/'+roomSeat).remove();
+                        await roomRef.child('members/'+myUid).remove();
+                    }
+                } catch(e) { console.warn(e); }
+                if(roomValueHandler) roomRef.off('value',roomValueHandler);
+                if(commandHandler) roomRef.child('commands').off('child_added',commandHandler);
+            }
+            roomCode=null; roomRef=null; roomIsHost=false; roomSeat=-1;
+            roomValueHandler=null; commandHandler=null; roomSnapshot=null;
+            document.getElementById('room-lobby').classList.add('hidden');
+            document.getElementById('btn-start-game').classList.remove('hidden');
+            document.getElementById('local-player-setup').classList.remove('hidden');
+            if(showMessage) roomStatus('You left the room. You can create or join another room.');
+        }
+        async function startOnlineMatch() {
+            if(!roomIsHost || !roomSnapshot) return;
+            const seats=roomSnapshot.seats||{}, max=Number(roomSnapshot.maxPlayers||4);
+            const count=Object.keys(seats).filter(k=>Number(k)<max).length;
+            if(count<2) { roomStatus('At least 2 players must join before starting.'); return; }
+            gameState.players=[];
+            for(let i=0;i<4;i++) {
+                const seat=seats[i];
+                gameState.players.push(seat && i<max
+                    ? {id:i,name:seat.name,type:'human',colorName:PLAYERS_CONFIG[i].name,tokens:[-1,-1,-1,-1],finishedCount:0,rank:null,uid:seat.uid}
+                    : {id:i,name:`CPU ${PLAYERS_CONFIG[i].name}`,type:'bot',colorName:PLAYERS_CONFIG[i].name,tokens:[-1,-1,-1,-1],finishedCount:0,rank:null,uid:null});
+            }
+            gameState.started=true; gameState.currentTurn=0; gameState.phase='IDLE';
+            gameState.diceValue=1; gameState.consecutiveSixes=0; gameState.validTokens=[];
+            gameState.rankings=[]; gameState.animatingDice=false;
+            resetAllTokenMeshes(); clearHighlights();
+            const initial=serializeGameState();
+            try {
+                await roomRef.update({status:'playing',game:initial});
+                gameState.started=false;
+                startGameFromRoom(initial);
+            } catch(e) { roomStatus('Could not start match: '+e.message); }
+        }
+        window.addEventListener('load',()=>initFirebaseOnline());
+
+        // ==========================================
+        // 1. AUDIO ENGINE (Tone.js Synthesizer)
+        // ==========================================
+        let soundEnabled = true;
+        let synth, metalSynth;
+
+        function initAudio() {
+            if (synth) return;
+            try {
+                synth = new Tone.PolySynth(Tone.Synth, {
+                    oscillator: { type: "triangle" },
+                    envelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.2 }
+                }).toDestination();
+                synth.volume.value = -8;
+
+                metalSynth = new Tone.MembraneSynth({
+                    pitchDecay: 0.03,
+                    octaves: 3,
+                    envelope: { attack: 0.005, decay: 0.15, sustain: 0 }
+                }).toDestination();
+                metalSynth.volume.value = -6;
+            } catch (e) {
+                console.warn("Audio init deferred:", e);
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled) return;
+            try {
+                if (Tone.context.state !== 'running') Tone.start();
+                initAudio();
+                const now = Tone.now();
+                if (type === 'roll') {
+                    metalSynth.triggerAttackRelease("C3", "16n", now);
+                    metalSynth.triggerAttackRelease("E3", "16n", now + 0.07);
+                    metalSynth.triggerAttackRelease("G3", "16n", now + 0.14);
+                } else if (type === 'step') {
+                    synth.triggerAttackRelease("C5", "32n", now);
+                } else if (type === 'six') {
+                    synth.triggerAttackRelease(["C5", "E5", "G5"], "8n", now);
+                } else if (type === 'capture') {
+                    synth.triggerAttackRelease(["G4", "Eb4", "C4"], "8n", now);
+                } else if (type === 'home') {
+                    synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "4n", now);
+                } else if (type === 'win') {
+                    synth.triggerAttackRelease(["C5", "E5", "G5", "B5", "C6"], "2n", now);
+                }
+            } catch (e) {}
+        }
+
+        // ==========================================
+        // 2. LUDO BOARD COORDINATES & GAME CONSTANTS
+        // ==========================================
+        // Standard 15x15 Ludo grid mapped to centered coordinates (-7 to +7)
+        const PLAYERS_CONFIG = [
+            { id: 0, name: 'Red',    colorHex: 0xef4444, lightHex: 0xfca5a5, cssText: 'text-rose-400',    startIdx: 0  },
+            { id: 1, name: 'Green',  colorHex: 0x10b981, lightHex: 0x6ee7b7, cssText: 'text-emerald-400', startIdx: 13 },
+            { id: 2, name: 'Yellow', colorHex: 0xfacc15, lightHex: 0xfef08a, cssText: 'text-amber-300',   startIdx: 26 },
+            { id: 3, name: 'Blue',   colorHex: 0x3b82f6, lightHex: 0x93c5fd, cssText: 'text-sky-400',     startIdx: 39 }
+        ];
+
+        // 52-tile outer clockwise perimeter (grid [col, row] from 0..14)
+        const MAIN_PATH_GRID = [
+            // Red start upward arm (left column of bottom arm)
+            [6,13], [6,12], [6,11], [6,10], [6,9],
+            // Turn left into left arm (bottom row)
+            [5,8], [4,8], [3,8], [2,8], [1,8], [0,8],
+            // Left end
+            [0,7],
+            // Turn right along top row of left arm (Green start at [1,6] -> index 13)
+            [0,6], [1,6], [2,6], [3,6], [4,6], [5,6],
+            // Turn up into top arm (left column)
+            [6,5], [6,4], [6,3], [6,2], [6,1], [6,0],
+            // Top end
+            [7,0],
+            // Turn down along right column of top arm (Yellow start at [8,1] -> index 26)
+            [8,0], [8,1], [8,2], [8,3], [8,4], [8,5],
+            // Turn right into right arm (top row)
+            [9,6], [10,6], [11,6], [12,6], [13,6], [14,6],
+            // Right end
+            [14,7],
+            // Turn left along bottom row of right arm (Blue start at [13,8] -> index 39)
+            [14,8], [13,8], [12,8], [11,8], [10,8], [9,8],
+            // Turn down into bottom arm (right column)
+            [8,9], [8,10], [8,11], [8,12], [8,13], [8,14],
+            // Bottom end & corner before Red start
+            [7,14], [6,14]
+        ];
+
+        // Safe star indices on the 52-tile main track (4 colored start squares + 4 star squares)
+        const SAFE_INDICES = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
+
+        // Home stretch paths (5 colored squares + final center goal = 6 steps: relPos 51..56)
+        const HOME_PATHS_GRID = [
+            [[7,13], [7,12], [7,11], [7,10], [7,9], [7,7.9]],   // Red (Bottom -> Center)
+            [[1,7],  [2,7],  [3,7],  [4,7],  [5,7],  [6.1,7]],   // Green (Left -> Center)
+            [[7,1],  [7,2],  [7,3],  [7,4],  [7,5],  [7,6.1]],   // Yellow (Top -> Center)
+            [[13,7], [12,7], [11,7], [10,7], [9,7],  [7.9,7]]    // Blue (Right -> Center)
+        ];
+
+        // Yard base coordinates (4 tokens per corner yard)
+        const YARD_BASES_GRID = [
+            [[1.8, 10.8], [3.6, 10.8], [1.8, 12.6], [3.6, 12.6]], // Red (Bottom-Left)
+            [[1.8, 1.8],  [3.6, 1.8],  [1.8, 3.6],  [3.6, 3.6]],  // Green (Top-Left)
+            [[10.8, 1.8], [12.6, 1.8], [10.8, 3.6], [12.6, 3.6]], // Yellow (Top-Right)
+            [[10.8, 10.8],[12.6, 10.8],[10.8, 12.6],[12.6, 12.6]] // Blue (Bottom-Right)
+        ];
+
+        function gridToWorld(gx, gz) {
+            return new THREE.Vector3(gx - 7, 0, gz - 7);
+        }
+
+        // ==========================================
+        // 3. THREE.JS SCENE & 3D ASSETS
+        // ==========================================
+        let scene, camera, renderer;
+        let boardGroup, tokensGroup, diceMesh, highlightRingsGroup;
+        let raycaster = new THREE.Raycaster();
+        let pointer = new THREE.Vector2();
+
+        // Camera spherical orbit state
+        let camTheta = 0;           // Horizontal angle
+        let camPhi = 0.72;          // Vertical tilt (radians from top)
+        let camRadius = 21.5;
+        let targetCamTheta = 0;
+        let isDragging = false;
+        let dragMoved = false;
+        let prevPointer = { x: 0, y: 0 };
+
+        // Game State
+        let gameState = {
+            started: false,
+            players: [],
+            currentTurn: 0,
+            phase: 'IDLE', // 'IDLE', 'ROLLING', 'SELECT_TOKEN', 'MOVING', 'GAME_OVER'
+            diceValue: 1,
+            consecutiveSixes: 0,
+            validTokens: [],
+            rankings: [],
+            animatingDice: false,
+            diceAnimTime: 0,
+            diceTargetQuat: new THREE.Quaternion(),
+            diceStartQuat: new THREE.Quaternion()
+        };
+
+        // Token 3D meshes array [playerIdx][tokenIdx]
+        let tokenMeshes = [[], [], [], []];
+        let selectableRings = [];
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.1;
+            container.appendChild(renderer.domElement);
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.62);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfffbeb, 0.95);
+            dirLight.position.set(10, 22, 12);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 5;
+            dirLight.shadow.camera.far = 45;
+            const d = 11;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            dirLight.shadow.bias = -0.0005;
+            scene.add(dirLight);
+
+            const rimLight = new THREE.DirectionalLight(0x818cf8, 0.35);
+            rimLight.position.set(-12, 10, -12);
+            scene.add(rimLight);
+
+            buildBoard();
+            buildDice();
+            buildTokens();
+            setupInteraction();
+        }
+
+        // Create crisp star texture for safe tiles
+        function createStarTexture(bgHex, starColor = '#64748b') {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = bgHex;
+            ctx.fillRect(0, 0, 128, 128);
+
+            // Subtle tile border
+            ctx.strokeStyle = 'rgba(15,23,42,0.18)';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(2, 2, 124, 124);
+
+            // Draw 5-point star
+            ctx.save();
+            ctx.translate(64, 64);
+            ctx.beginPath();
+            for (let i = 0; i < 5; i++) {
+                ctx.lineTo(Math.cos((18 + i * 72) * Math.PI / 180) * 34, -Math.sin((18 + i * 72) * Math.PI / 180) * 34);
+                ctx.lineTo(Math.cos((54 + i * 72) * Math.PI / 180) * 14, -Math.sin((54 + i * 72) * Math.PI / 180) * 14);
+            }
+            ctx.closePath();
+            ctx.fillStyle = starColor;
+            ctx.fill();
+            ctx.restore();
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        function buildBoard() {
+            boardGroup = new THREE.Group();
+            scene.add(boardGroup);
+
+            // Luxury Wooden Base Frame
+            const frameGeo = new THREE.BoxGeometry(16.4, 0.7, 16.4);
+            const frameMat = new THREE.MeshStandardMaterial({
+                color: 0x3b1f0e,
+                roughness: 0.45,
+                metalness: 0.1
+            });
+            const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+            frameMesh.position.y = -0.45;
+            frameMesh.receiveShadow = true;
+            boardGroup.add(frameMesh);
+
+            // Gold trim inlay around board
+            const trimGeo = new THREE.BoxGeometry(15.35, 0.74, 15.35);
+            const trimMat = new THREE.MeshStandardMaterial({
+                color: 0xd97706,
+                roughness: 0.3,
+                metalness: 0.75
+            });
+            const trimMesh = new THREE.Mesh(trimGeo, trimMat);
+            trimMesh.position.y = -0.44;
+            boardGroup.add(trimMesh);
+
+            // Ivory Board Deck
+            const deckGeo = new THREE.BoxGeometry(15.05, 0.76, 15.05);
+            const deckMat = new THREE.MeshStandardMaterial({
+                color: 0xf8fafc,
+                roughness: 0.6
+            });
+            const deckMesh = new THREE.Mesh(deckGeo, deckMat);
+            deckMesh.position.y = -0.43;
+            deckMesh.receiveShadow = true;
+            boardGroup.add(deckMesh);
+
+            // Build 15x15 Grid Tiles
+            const tileGeo = new THREE.BoxGeometry(0.95, 0.08, 0.95);
+            const starWhiteTex = createStarTexture('#f8fafc', '#94a3b8');
+
+            for (let gx = 0; gx < 15; gx++) {
+                for (let gz = 0; gz < 15; gz++) {
+                    // Skip the 4 large corner yards (6x6 each) and 3x3 center goal
+                    const inTopLeft = gx < 6 && gz < 6;
+                    const inTopRight = gx > 8 && gz < 6;
+                    const inBotLeft = gx < 6 && gz > 8;
+                    const inBotRight = gx > 8 && gz > 8;
+                    const inCenter = gx >= 6 && gx <= 8 && gz >= 6 && gz <= 8;
+                    if (inTopLeft || inTopRight || inBotLeft || inBotRight || inCenter) continue;
+
+                    let color = 0xffffff;
+                    let isStar = false;
+
+                    // Colored Home Columns & Start Squares
+                    if ((gx === 7 && gz >= 9 && gz <= 13) || (gx === 6 && gz === 13)) {
+                        color = PLAYERS_CONFIG[0].colorHex; // Red
+                        if (gx === 6 && gz === 13) isStar = true;
+                    } else if ((gz === 7 && gx >= 1 && gx <= 5) || (gx === 1 && gz === 6)) {
+                        color = PLAYERS_CONFIG[1].colorHex; // Green
+                        if (gx === 1 && gz === 6) isStar = true;
+                    } else if ((gx === 7 && gz >= 1 && gz <= 5) || (gx === 8 && gz === 1)) {
+                        color = PLAYERS_CONFIG[2].colorHex; // Yellow
+                        if (gx === 8 && gz === 1) isStar = true;
+                    } else if ((gz === 7 && gx >= 9 && gx <= 13) || (gx === 13 && gz === 8)) {
+                        color = PLAYERS_CONFIG[3].colorHex; // Blue
+                        if (gx === 13 && gz === 8) isStar = true;
+                    }
+
+                    // Neutral Safe Star Tiles
+                    if ((gx === 2 && gz === 8) || (gx === 6 && gz === 2) || (gx === 12 && gz === 6) || (gx === 8 && gz === 12)) {
+                        isStar = true;
+                    }
+
+                    let mat;
+                    if (isStar && color === 0xffffff) {
+                        mat = new THREE.MeshStandardMaterial({ map: starWhiteTex, roughness: 0.5 });
+                    } else if (isStar) {
+                        const hexStr = '#' + color.toString(16).padStart(6, '0');
+                        mat = new THREE.MeshStandardMaterial({ map: createStarTexture(hexStr, '#ffffff'), roughness: 0.45 });
+                    } else {
+                        mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5 });
+                    }
+
+                    const tile = new THREE.Mesh(tileGeo, mat);
+                    const pos = gridToWorld(gx, gz);
+                    tile.position.set(pos.x, 0.01, pos.z);
+                    tile.receiveShadow = true;
+                    boardGroup.add(tile);
+                }
+            }
+
+            // Build 4 Corner Home Yards
+            const yardCenters = [
+                { p: 0, cx: -4.5, cz: 4.5 },  // Red (Bottom-Left)
+                { p: 1, cx: -4.5, cz: -4.5 }, // Green (Top-Left)
+                { p: 2, cx: 4.5,  cz: -4.5 }, // Yellow (Top-Right)
+                { p: 3, cx: 4.5,  cz: 4.5 }   // Blue (Bottom-Right)
+            ];
+
+            yardCenters.forEach(y => {
+                const cfg = PLAYERS_CONFIG[y.p];
+                const outerGeo = new THREE.BoxGeometry(5.85, 0.1, 5.85);
+                const outerMat = new THREE.MeshStandardMaterial({ color: cfg.colorHex, roughness: 0.45 });
+                const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+                outerMesh.position.set(y.cx, 0.02, y.cz);
+                outerMesh.receiveShadow = true;
+                boardGroup.add(outerMesh);
+
+                const innerGeo = new THREE.BoxGeometry(4.1, 0.12, 4.1);
+                const innerMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+                const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+                innerMesh.position.set(y.cx, 0.03, y.cz);
+                innerMesh.receiveShadow = true;
+                boardGroup.add(innerMesh);
+
+                // 4 Token Slots inside each yard
+                YARD_BASES_GRID[y.p].forEach(slot => {
+                    const slotPos = gridToWorld(slot[0], slot[1]);
+                    const ringGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.04, 24);
+                    const ringMat = new THREE.MeshStandardMaterial({ color: cfg.colorHex, roughness: 0.4 });
+                    const ring = new THREE.Mesh(ringGeo, ringMat);
+                    ring.position.set(slotPos.x, 0.09, slotPos.z);
+                    ring.receiveShadow = true;
+                    boardGroup.add(ring);
+                });
+            });
+
+            // Center 3x3 Home Goal Triangles
+            const centerGroup = new THREE.Group();
+            centerGroup.position.set(0, 0.04, 0);
+            const triConfigs = [
+                { p: 0, rot: 0 },              // Red (Bottom)
+                { p: 1, rot: -Math.PI / 2 },   // Green (Left)
+                { p: 2, rot: Math.PI },        // Yellow (Top)
+                { p: 3, rot: Math.PI / 2 }     // Blue (Right)
+            ];
+
+            triConfigs.forEach(tc => {
+                const shape = new THREE.Shape();
+                shape.moveTo(0, 0);
+                shape.lineTo(-1.45, 1.45);
+                shape.lineTo(1.45, 1.45);
+                shape.closePath();
+
+                const extrudeSettings = { depth: 0.06, bevelEnabled: false };
+                const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                geo.rotateX(Math.PI / 2);
+                geo.rotateY(tc.rot);
+
+                const mat = new THREE.MeshStandardMaterial({ color: PLAYERS_CONFIG[tc.p].colorHex, roughness: 0.4 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.y = 0.05;
+                mesh.receiveShadow = true;
+                centerGroup.add(mesh);
+            });
+            boardGroup.add(centerGroup);
+        }
+
+        // Build Realistic 3D Rounded-Look Die with Crisp Pip Textures
+        function createDieFaceTexture(num) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            // Glossy ivory white surface
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 256, 256);
+
+            // Subtle rounded inner border
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 14;
+            ctx.strokeRect(7, 7, 242, 242);
+
+            const pips = {
+                1: [[128, 128]],
+                2: [[68, 68], [188, 188]],
+                3: [[64, 64], [128, 128], [192, 192]],
+                4: [[72, 72], [184, 72], [72, 184], [184, 184]],
+                5: [[68, 68], [188, 68], [128, 128], [68, 188], [188, 188]],
+                6: [[72, 60], [184, 60], [72, 128], [184, 128], [72, 196], [184, 196]]
+            };
+
+            pips[num].forEach(([x, y]) => {
+                ctx.beginPath();
+                ctx.arc(x, y, num === 1 ? 34 : 22, 0, Math.PI * 2);
+                ctx.fillStyle = (num === 1 || num === 6) ? '#e11d48' : '#0f172a';
+                ctx.fill();
+            });
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.anisotropy = 4;
+            return tex;
+        }
+
+        function buildDice() {
+            // Three.js BoxGeometry material order:
+            // 0: +X (Right) -> 3
+            // 1: -X (Left)  -> 4
+            // 2: +Y (Top)   -> 1
+            // 3: -Y (Bottom)-> 6
+            // 4: +Z (Front) -> 2
+            // 5: -Z (Back)  -> 5
+            const faceOrder = [3, 4, 1, 6, 2, 5];
+            const materials = faceOrder.map(n => new THREE.MeshStandardMaterial({
+                map: createDieFaceTexture(n),
+                roughness: 0.25,
+                metalness: 0.05
+            }));
+
+            const diceGeo = new THREE.BoxGeometry(1.15, 1.15, 1.15);
+            diceMesh = new THREE.Mesh(diceGeo, materials);
+            diceMesh.position.set(0, 1.15, 0);
+            diceMesh.castShadow = true;
+            diceMesh.userData = { isDice: true };
+            scene.add(diceMesh);
+        }
+
+        // Exact Quaternion orientation so chosen face points straight UP (+Y)
+        function getTargetQuaternionForDice(value) {
+            const euler = new THREE.Euler();
+            switch (value) {
+                case 1: euler.set(0, 0, 0); break;                    // +Y is already 1
+                case 6: euler.set(Math.PI, 0, 0); break;              // -Y to +Y
+                case 2: euler.set(-Math.PI / 2, 0, 0); break;         // +Z to +Y
+                case 5: euler.set(Math.PI / 2, 0, 0); break;          // -Z to +Y
+                case 3: euler.set(0, 0, Math.PI / 2); break;          // +X to +Y
+                case 4: euler.set(0, 0, -Math.PI / 2); break;         // -X to +Y
+            }
+            // Add slight random Y spin for natural landing feel
+            const spinY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (Math.floor(Math.random() * 4)) * (Math.PI / 2));
+            const baseQ = new THREE.Quaternion().setFromEuler(euler);
+            return spinY.multiply(baseQ);
+        }
+
+        function buildTokens() {
+            tokensGroup = new THREE.Group();
+            highlightRingsGroup = new THREE.Group();
+            scene.add(tokensGroup);
+            scene.add(highlightRingsGroup);
+
+            // Lathe profile for sleek pawn/piece
+            const points = [
+                new THREE.Vector2(0.0, 0.0),
+                new THREE.Vector2(0.36, 0.0),
+                new THREE.Vector2(0.36, 0.14),
+                new THREE.Vector2(0.24, 0.24),
+                new THREE.Vector2(0.16, 0.62),
+                new THREE.Vector2(0.24, 0.72),
+                new THREE.Vector2(0.22, 0.92),
+                new THREE.Vector2(0.0, 1.02)
+            ];
+            const pawnGeo = new THREE.LatheGeometry(points, 28);
+
+            for (let p = 0; p < 4; p++) {
+                tokenMeshes[p] = [];
+                const cfg = PLAYERS_CONFIG[p];
+                const mat = new THREE.MeshStandardMaterial({
+                    color: cfg.colorHex,
+                    roughness: 0.25,
+                    metalness: 0.15
+                });
+
+                for (let t = 0; t < 4; t++) {
+                    const mesh = new THREE.Mesh(pawnGeo, mat);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData = { playerIdx: p, tokenIdx: t };
+
+                    // Gold collar ring on pawn
+                    const collarGeo = new THREE.TorusGeometry(0.19, 0.025, 10, 24);
+                    collarGeo.rotateX(Math.PI / 2);
+                    const collarMat = new THREE.MeshStandardMaterial({ color: 0xfde047, metalness: 0.8, roughness: 0.2 });
+                    const collar = new THREE.Mesh(collarGeo, collarMat);
+                    collar.position.y = 0.65;
+                    mesh.add(collar);
+
+                    const baseGrid = YARD_BASES_GRID[p][t];
+                    const worldPos = gridToWorld(baseGrid[0], baseGrid[1]);
+                    mesh.position.set(worldPos.x, 0.1, worldPos.z);
+
+                    tokensGroup.add(mesh);
+                    tokenMeshes[p].push(mesh);
+                }
+            }
+        }
+
+        // ==========================================
+        // 4. LUDO RULES & GAME LOGIC
+        // ==========================================
+        function startGame() {
+            if (roomCode) return;
+            initAudio();
+            gameState.players = [];
+            for (let i = 0; i < 4; i++) {
+                const rawName = document.getElementById(`input-p${i}`).value.trim() || `Player ${i + 1}`;
+                const pType = document.getElementById(`type-p${i}`).value;
+                gameState.players.push({
+                    id: i,
+                    name: rawName,
+                    type: pType, // 'human' or 'bot'
+                    colorName: PLAYERS_CONFIG[i].name,
+                    tokens: [-1, -1, -1, -1], // -1 = in yard, 0..50 = main track relPos, 51..55 = home lane, 56 = finished
+                    finishedCount: 0,
+                    rank: null
+                });
+                document.getElementById(`name-${i}`).textContent = rawName;
+            }
+
+            gameState.started = true;
+            gameState.currentTurn = 0;
+            gameState.phase = 'IDLE';
+            gameState.consecutiveSixes = 0;
+            gameState.rankings = [];
+
+            resetAllTokenMeshes();
+            clearHighlights();
+
+            document.getElementById('setup-modal').classList.add('hidden');
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('hud-top').classList.remove('hidden');
+            document.getElementById('player-cards').classList.remove('hidden');
+            document.getElementById('hud-bottom').classList.remove('hidden');
+
+            updateHUD();
+            prepareTurn();
+        }
+
+        function resetAllTokenMeshes() {
+            for (let p = 0; p < 4; p++) {
+                for (let t = 0; t < 4; t++) {
+                    const baseGrid = YARD_BASES_GRID[p][t];
+                    const worldPos = gridToWorld(baseGrid[0], baseGrid[1]);
+                    tokenMeshes[p][t].position.set(worldPos.x, 0.1, worldPos.z);
+                    tokenMeshes[p][t].scale.set(1, 1, 1);
+                }
+            }
+        }
+
+        function getGlobalTrackIndex(playerIdx, relPos) {
+            return (PLAYERS_CONFIG[playerIdx].startIdx + relPos) % 52;
+        }
+
+        function getTokenWorldPosition(playerIdx, tokenIdx, relPos) {
+            if (relPos === -1) {
+                const g = YARD_BASES_GRID[playerIdx][tokenIdx];
+                return gridToWorld(g[0], g[1]).setY(0.1);
+            }
+            if (relPos >= 0 && relPos <= 50) {
+                const globalIdx = getGlobalTrackIndex(playerIdx, relPos);
+                const g = MAIN_PATH_GRID[globalIdx];
+                return gridToWorld(g[0], g[1]).setY(0.06);
+            }
+            // Home stretch & goal (51..56)
+            const homeStep = Math.min(relPos - 51, 5);
+            const g = HOME_PATHS_GRID[playerIdx][homeStep];
+            // Offset finished tokens slightly in the center triangle so all 4 are visible
+            if (relPos === 56) {
+                const spread = (tokenIdx - 1.5) * 0.28;
+                const pos = gridToWorld(g[0], g[1]).setY(0.1);
+                if (playerIdx === 0 || playerIdx === 2) pos.x += spread;
+                else pos.z += spread;
+                return pos;
+            }
+            return gridToWorld(g[0], g[1]).setY(0.06);
+        }
+
+        // Arrange multiple tokens sharing the exact same tile neatly side-by-side
+        function resolveOverlappingTokens() {
+            const tileGroups = {};
+            for (let p = 0; p < 4; p++) {
+                for (let t = 0; t < 4; t++) {
+                    const rel = gameState.players[p].tokens[t];
+                    if (rel >= 0 && rel <= 55) {
+                        const key = rel <= 50 ? `M_${getGlobalTrackIndex(p, rel)}` : `H_${p}_${rel}`;
+                        if (!tileGroups[key]) tileGroups[key] = [];
+                        tileGroups[key].push({ p, t, rel });
+                    }
+                }
+            }
+
+            Object.values(tileGroups).forEach(group => {
+                if (group.length === 1) {
+                    const { p, t, rel } = group[0];
+                    const pos = getTokenWorldPosition(p, t, rel);
+                    tokenMeshes[p][t].position.copy(pos);
+                    tokenMeshes[p][t].scale.set(1, 1, 1);
+                } else {
+                    const offsets = [
+                        [-0.22, -0.22], [0.22, 0.22], [-0.22, 0.22], [0.22, -0.22]
+                    ];
+                    group.forEach((item, idx) => {
+                        const pos = getTokenWorldPosition(item.p, item.t, item.rel);
+                        const off = offsets[idx % offsets.length];
+                        tokenMeshes[item.p][item.t].position.set(pos.x + off[0], pos.y, pos.z + off[1]);
+                        tokenMeshes[item.p][item.t].scale.set(0.76, 0.85, 0.76);
+                    });
+                }
+            });
+        }
+
+        function prepareTurn() {
+            if (gameState.phase === 'GAME_OVER') return;
+            if (roomCode && !roomIsHost) return;
+            clearHighlights();
+
+            const player = gameState.players[gameState.currentTurn];
+            // Skip players who already finished all 4 tokens
+            if (player.finishedCount === 4) {
+                advanceToNextPlayer();
+                return;
+            }
+
+            gameState.phase = 'IDLE';
+            updateHUD();
+            publishRoomGameState();
+
+            const rollBtn = document.getElementById('btn-roll-dice');
+            if (player.type === 'bot') {
+                rollBtn.classList.remove('pulse-ring');
+                setTimeout(() => {
+                    if (gameState.phase === 'IDLE' && gameState.currentTurn === player.id) {
+                        const randomVal = Math.floor(Math.random() * 6) + 1;
+                        executeDiceRoll(randomVal);
+                    }
+                }, 750);
+            } else {
+                rollBtn.classList.add('pulse-ring');
+            }
+        }
+
+        // Triggered when user clicks Dice button or 3D Dice
+        function handleDiceTrigger() {
+            if (gameState.phase !== 'IDLE') return;
+            const player = gameState.players[gameState.currentTurn];
+            if (player.type === 'bot') return;
+            if (roomCode && !roomIsHost) {
+                if (player.uid !== myUid) return;
+                if (player.name === 'Ai') document.getElementById('ai-dice-modal').classList.remove('hidden');
+                else sendRoomCommand({type:'roll'});
+                return;
+            }
+            if (roomCode && roomIsHost && player.uid && player.uid !== myUid) return;
+            if (roomCode && !roomIsHost) {
+                if (player.uid !== myUid) return;
+                if (player.name === 'Ai') {
+                    document.getElementById('ai-dice-modal').classList.remove('hidden');
+                } else {
+                    sendRoomCommand({type:'roll'});
+                }
+                return;
+            }
+            if (roomCode && roomIsHost && player.uid && player.uid !== myUid) return;
+
+            // SPECIAL MECHANIC: If active player's name is exactly "Ai", show number selector
+            if (player.name === "Ai") {
+                document.getElementById('ai-dice-modal').classList.remove('hidden');
+                return;
+            }
+
+            // Standard fair 1-6 dice roll for all other players
+            const rolled = Math.floor(Math.random() * 6) + 1;
+            executeDiceRoll(rolled);
+        }
+
+        function executeDiceRoll(chosenValue) {
+            gameState.phase = 'ROLLING';
+            gameState.diceValue = chosenValue;
+            document.getElementById('btn-roll-dice').classList.remove('pulse-ring');
+            playSound('roll');
+
+            // Configure 3D tumble animation
+            gameState.animatingDice = true;
+            gameState.diceAnimTime = 0;
+            gameState.diceStartQuat.copy(diceMesh.quaternion);
+            gameState.diceTargetQuat.copy(getTargetQuaternionForDice(chosenValue));
+
+            setBanner(`${gameState.players[gameState.currentTurn].name} is rolling...`);
+            publishRoomGameState();
+        }
+
+        function onDiceRollComplete() {
+            gameState.animatingDice = false;
+            if (roomCode && !roomIsHost) return;
+            if (roomCode && !roomIsHost) return;
+            const val = gameState.diceValue;
+            const player = gameState.players[gameState.currentTurn];
+
+            document.getElementById('dice-preview').textContent = val;
+            if (val === 6) {
+                playSound('six');
+                gameState.consecutiveSixes++;
+                if (gameState.consecutiveSixes >= 3) {
+                    setBanner(`${player.name} rolled three 6s! Turn forfeited.`);
+                    gameState.consecutiveSixes = 0;
+                    setTimeout(() => advanceToNextPlayer(), 1100);
+                    return;
+                }
+            } else {
+                gameState.consecutiveSixes = 0;
+            }
+
+            // Determine valid movable tokens
+            const valid = [];
+            player.tokens.forEach((relPos, idx) => {
+                if (relPos === -1 && val === 6) {
+                    valid.push(idx);
+                } else if (relPos >= 0 && relPos + val <= 56) {
+                    valid.push(idx);
+                }
+            });
+
+            gameState.validTokens = valid;
+            publishRoomGameState();
+
+            if (valid.length === 0) {
+                setBanner(`${player.name} rolled ${val} — No valid moves.`);
+                setTimeout(() => {
+                    if (val === 6) {
+                        prepareTurn();
+                    } else {
+                        advanceToNextPlayer();
+                    }
+                }, 1050);
+                return;
+            }
+
+            // Auto-move if only 1 logical option exists (or if all valid tokens are in yard)
+            const allInYard = valid.every(idx => player.tokens[idx] === -1);
+            if (valid.length === 1 || allInYard) {
+                setBanner(`${player.name} rolled ${val}!`);
+                setTimeout(() => moveToken(player.id, valid[0], val), 420);
+                return;
+            }
+
+            // Bot heuristic choice
+            if (player.type === 'bot') {
+                const chosenToken = chooseBestBotToken(player, valid, val);
+                setBanner(`${player.name} rolled ${val}!`);
+                setTimeout(() => moveToken(player.id, chosenToken, val), 550);
+                return;
+            }
+
+            // Human choice among multiple valid tokens
+            gameState.phase = 'SELECT_TOKEN';
+            setBanner(`${player.name} rolled ${val} — Tap a glowing token to move!`);
+            highlightValidTokens(player.id, valid);
+            publishRoomGameState();
+        }
+
+        function chooseBestBotToken(player, validTokens, steps) {
+            let bestToken = validTokens[0];
+            let bestScore = -999;
+
+            validTokens.forEach(tIdx => {
+                const curPos = player.tokens[tIdx];
+                let score = 0;
+
+                if (curPos === -1) {
+                    score += 65; // Bringing a new piece into play is strong
+                } else {
+                    const nextPos = curPos + steps;
+                    if (nextPos === 56) score += 120; // Reaching center goal
+                    else if (nextPos > 50 && curPos <= 50) score += 80; // Entering safe home lane
+
+                    if (nextPos <= 50) {
+                        const targetGlobal = getGlobalTrackIndex(player.id, nextPos);
+                        if (SAFE_INDICES.has(targetGlobal)) score += 45;
+
+                        // Check if capture possible
+                        for (let op = 0; op < 4; op++) {
+                            if (op === player.id) continue;
+                            gameState.players[op].tokens.forEach(opRel => {
+                                if (opRel >= 0 && opRel <= 50 && getGlobalTrackIndex(op, opRel) === targetGlobal && !SAFE_INDICES.has(targetGlobal)) {
+                                    score += 110;
+                                }
+                            });
+                        }
+                    }
+                    score += curPos * 0.5; // Prefer advancing lead token
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestToken = tIdx;
+                }
+            });
+
+            return bestToken;
+        }
+
+        function highlightValidTokens(playerIdx, validList) {
+            clearHighlights();
+            validList.forEach(tIdx => {
+                const mesh = tokenMeshes[playerIdx][tIdx];
+                const ringGeo = new THREE.RingGeometry(0.42, 0.58, 32);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: 0xffffff,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.9
+                });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.set(mesh.position.x, 0.14, mesh.position.z);
+                ring.userData = { playerIdx, tokenIdx: tIdx, isHighlight: true };
+                highlightRingsGroup.add(ring);
+                selectableRings.push(ring);
+            });
+        }
+
+        function clearHighlights() {
+            while (highlightRingsGroup.children.length > 0) {
+                highlightRingsGroup.remove(highlightRingsGroup.children[0]);
+            }
+            selectableRings = [];
+        }
+
+        async function moveToken(playerIdx, tokenIdx, steps, remoteCommand = false) {
+            if (roomCode && !roomIsHost) {
+                if (gameState.players[playerIdx] && gameState.players[playerIdx].uid === myUid)
+                    sendRoomCommand({type:'move', token:tokenIdx});
+                return;
+            }
+            if (roomCode && roomIsHost && !remoteCommand && gameState.players[playerIdx] && gameState.players[playerIdx].uid && gameState.players[playerIdx].uid !== myUid) return;
+            gameState.phase = 'MOVING';
+            publishRoomGameState();
+            publishRoomGameState();
+            clearHighlights();
+
+            const player = gameState.players[playerIdx];
+            const mesh = tokenMeshes[playerIdx][tokenIdx];
+            mesh.scale.set(1, 1, 1);
+
+            let currentRel = player.tokens[tokenIdx];
+            let bonusTurn = (steps === 6);
+
+            if (currentRel === -1) {
+                // Deploy from yard onto start square (relPos = 0)
+                player.tokens[tokenIdx] = 0;
+                const dest = getTokenWorldPosition(playerIdx, tokenIdx, 0);
+                await animateHop(mesh, dest, 260);
+                playSound('step');
+                publishRoomGameState();
+                publishRoomGameState();
+            } else {
+                // Step-by-step hop animation along board squares
+                for (let s = 1; s <= steps; s++) {
+                    currentRel++;
+                    player.tokens[tokenIdx] = currentRel;
+                    const dest = getTokenWorldPosition(playerIdx, tokenIdx, currentRel);
+                    await animateHop(mesh, dest, 165);
+                    playSound('step');
+                    publishRoomGameState();
+                    publishRoomGameState();
+                }
+            }
+
+            const finalRel = player.tokens[tokenIdx];
+
+            // Check if token reached final home triangle (56)
+            if (finalRel === 56) {
+                player.finishedCount++;
+                bonusTurn = true;
+                playSound('home');
+                setBanner(`${player.name} brought a piece home! Bonus Roll!`);
+            }
+
+            // Check opponent captures if on main perimeter (0..50) and not a safe star tile
+            if (finalRel >= 0 && finalRel <= 50) {
+                const globalTile = getGlobalTrackIndex(playerIdx, finalRel);
+                if (!SAFE_INDICES.has(globalTile)) {
+                    let capturedAny = false;
+                    for (let op = 0; op < 4; op++) {
+                        if (op === playerIdx) continue;
+                        for (let ot = 0; ot < 4; ot++) {
+                            const opRel = gameState.players[op].tokens[ot];
+                            if (opRel >= 0 && opRel <= 50 && getGlobalTrackIndex(op, opRel) === globalTile) {
+                                // Send opponent token back to yard!
+                                gameState.players[op].tokens[ot] = -1;
+                                const yardPos = getTokenWorldPosition(op, ot, -1);
+                                animateHop(tokenMeshes[op][ot], yardPos, 380);
+                                capturedAny = true;
+                            }
+                        }
+                    }
+                    if (capturedAny) {
+                        bonusTurn = true;
+                        playSound('capture');
+                        setBanner(`${player.name} captured an opponent! Bonus Roll!`);
+                    }
+                }
+            }
+
+            resolveOverlappingTokens();
+            updateHUD();
+            publishRoomGameState();
+
+            // Check if player just finished all 4 tokens
+            if (player.finishedCount === 4 && player.rank === null) {
+                player.rank = gameState.rankings.length + 1;
+                gameState.rankings.push(player);
+                playSound('win');
+                setBanner(`🎉 ${player.name} finished in Rank #${player.rank}!`);
+
+                // End game when 3 players have finished (or 1st place if preferred; standard Ludo continues until 3 finish)
+                if (gameState.rankings.length >= 3) {
+                    const remaining = gameState.players.find(p => p.rank === null);
+                    if (remaining) {
+                        remaining.rank = 4;
+                        gameState.rankings.push(remaining);
+                    }
+                    setTimeout(() => showVictoryScreen(), 1100);
+                    return;
+                }
+            }
+
+            setTimeout(() => {
+                if (bonusTurn && player.finishedCount < 4) {
+                    prepareTurn();
+                } else {
+                    gameState.consecutiveSixes = 0;
+                    advanceToNextPlayer();
+                }
+            }, 520);
+        }
+
+        function animateHop(mesh, targetPos, duration) {
+            return new Promise(resolve => {
+                const startPos = mesh.position.clone();
+                const startTime = performance.now();
+
+                function step(now) {
+                    const t = Math.min((now - startTime) / duration, 1);
+                    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                    mesh.position.x = startPos.x + (targetPos.x - startPos.x) * ease;
+                    mesh.position.z = startPos.z + (targetPos.z - startPos.z) * ease;
+                    // Parabolic arc hop
+                    mesh.position.y = startPos.y + (targetPos.y - startPos.y) * ease + Math.sin(t * Math.PI) * 0.85;
+
+                    if (t < 1) {
+                        requestAnimationFrame(step);
+                    } else {
+                        mesh.position.copy(targetPos);
+                        resolve();
+                    }
+                }
+                requestAnimationFrame(step);
+            });
+        }
+
+        function advanceToNextPlayer() {
+            let next = (gameState.currentTurn + 1) % 4;
+            let guard = 0;
+            while (gameState.players[next].finishedCount === 4 && guard < 4) {
+                next = (next + 1) % 4;
+                guard++;
+            }
+            gameState.currentTurn = next;
+            publishRoomGameState();
+            prepareTurn();
+        }
+
+        // ==========================================
+        // 5. UI & HUD UPDATES
+        // ==========================================
+        function setBanner(text) {
+            document.getElementById('turn-banner').textContent = text;
+        }
+
+        function updateHUD() {
+            const active = gameState.players[gameState.currentTurn];
+            setBanner(`${active.name}'s Turn — ${active.type === 'bot' ? 'CPU Thinking...' : 'Roll the Dice!'}`);
+            document.getElementById('roll-btn-title').textContent = active.type === 'bot' ? `${active.name} (CPU)` : 'ROLL DICE';
+            document.getElementById('roll-btn-sub').textContent = active.type === 'bot' ? 'Auto-rolling...' : (roomCode && active.uid !== myUid ? `Waiting for ${active.name}` : `${active.name}'s turn`);
+
+            gameState.players.forEach((p, idx) => {
+                const card = document.getElementById(`card-${idx}`);
+                const scoreEl = document.getElementById(`score-${idx}`);
+                const statusEl = document.getElementById(`status-${idx}`);
+
+                scoreEl.textContent = `${p.finishedCount}/4`;
+
+                if (p.rank !== null) {
+                    statusEl.textContent = `Finished #${p.rank} 🏆`;
+                } else if (idx === gameState.currentTurn) {
+                    statusEl.textContent = '★ Active Turn';
+                } else {
+                    const outCount = p.tokens.filter(t => t >= 0 && t < 56).length;
+                    statusEl.textContent = `${outCount} active • ${4 - outCount - p.finishedCount} in yard`;
+                }
+
+                if (idx === gameState.currentTurn) {
+                    card.classList.add('ring-2', 'ring-white', 'scale-105', 'bg-slate-900/95');
+                    card.classList.remove('opacity-75');
+                } else {
+                    card.classList.remove('ring-2', 'ring-white', 'scale-105', 'bg-slate-900/95');
+                    card.classList.add('opacity-75');
+                }
+            });
+        }
+
+        function showVictoryScreen() {
+            gameState.phase = 'GAME_OVER';
+            publishRoomGameState();
+            const list = document.getElementById('standings-list');
+            list.innerHTML = '';
+
+            const medals = ['🥇', '🥈', '🥉', '4️⃣'];
+            gameState.rankings.forEach((p, idx) => {
+                const cfg = PLAYERS_CONFIG[p.id];
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between bg-slate-900/80 px-4 py-3 rounded-2xl border border-white/10';
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl">${medals[idx]}</span>
+                        <span class="font-bold ${cfg.cssText}">${p.name}</span>
+                    </div>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">${cfg.name} Team</span>
+                `;
+                list.appendChild(row);
+            });
+
+            document.getElementById('winner-subtitle').textContent = `${gameState.rankings[0].name} wins the Royal Crown!`;
+            document.getElementById('victory-modal').classList.remove('hidden');
+        }
+
+        // ==========================================
+        // 6. CAMERA ORBIT & RAYCAST INTERACTION
+        // ==========================================
+        function updateCameraPosition() {
+            const x = camRadius * Math.sin(camPhi) * Math.sin(camTheta);
+            const y = camRadius * Math.cos(camPhi);
+            const z = camRadius * Math.sin(camPhi) * Math.cos(camTheta);
+            camera.position.set(x, y, z);
+            camera.lookAt(0, 0, 0);
+        }
+
+        function setupInteraction() {
+            const dom = renderer.domElement;
+
+            dom.addEventListener('pointerdown', (e) => {
+                isDragging = true;
+                dragMoved = false;
+                prevPointer.x = e.clientX;
+                prevPointer.y = e.clientY;
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - prevPointer.x;
+                const dy = e.clientY - prevPointer.y;
+                if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
+
+                camTheta -= dx * 0.007;
+                camPhi = Math.max(0.22, Math.min(1.22, camPhi - dy * 0.006));
+                prevPointer.x = e.clientX;
+                prevPointer.y = e.clientY;
+                updateCameraPosition();
+            });
+
+            window.addEventListener('pointerup', (e) => {
+                if (isDragging && !dragMoved && gameState.started) {
+                    handleCanvasTap(e.clientX, e.clientY);
+                }
+                isDragging = false;
+            });
+
+            // Zoom with mouse wheel
+            dom.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                camRadius = Math.max(13, Math.min(30, camRadius + e.deltaY * 0.012));
+                updateCameraPosition();
+            }, { passive: false });
+
+            // UI Button Listeners
+            document.getElementById('btn-start-game').addEventListener('click', startGame);
+            document.getElementById('btn-create-room').addEventListener('click', createOnlineRoom);
+            document.getElementById('btn-join-room').addEventListener('click', joinOnlineRoom);
+            document.getElementById('btn-start-online').addEventListener('click', startOnlineMatch);
+            document.getElementById('btn-leave-room').addEventListener('click', () => leaveOnlineRoom());
+            document.getElementById('btn-copy-room').addEventListener('click', async () => {
+                if (!roomCode) return;
+                try { await navigator.clipboard.writeText(roomCode); roomStatus('Room code copied. Share it with your friends.'); }
+                catch(e) { roomStatus('Room code: '+roomCode+' — copy it manually.'); }
+            });
+            document.getElementById('btn-create-room').addEventListener('click', createOnlineRoom);
+            document.getElementById('btn-join-room').addEventListener('click', joinOnlineRoom);
+            document.getElementById('btn-start-online').addEventListener('click', startOnlineMatch);
+            document.getElementById('btn-leave-room').addEventListener('click', () => leaveOnlineRoom());
+            document.getElementById('btn-copy-room').addEventListener('click', async () => {
+                if (!roomCode) return;
+                try { await navigator.clipboard.writeText(roomCode); setRoomStatus('Room code copied. Share it with your friends.'); }
+                catch (e) { setRoomStatus('Room code: ' + roomCode + ' (select and copy it)'); }
+            });
+            document.getElementById('btn-play-again').addEventListener('click', () => {
+                document.getElementById('victory-modal').classList.add('hidden');
+                document.getElementById('setup-modal').classList.remove('hidden');
+            });
+            document.getElementById('btn-menu').addEventListener('click', () => {
+                document.getElementById('setup-modal').classList.remove('hidden');
+            });
+            document.getElementById('btn-roll-dice').addEventListener('click', handleDiceTrigger);
+
+            document.getElementById('btn-camera-reset').addEventListener('click', () => {
+                camTheta = 0;
+                camPhi = 0.72;
+                camRadius = 21.5;
+                updateCameraPosition();
+            });
+
+            document.getElementById('btn-sound').addEventListener('click', () => {
+                soundEnabled = !soundEnabled;
+                document.getElementById('icon-sound-on').classList.toggle('hidden', !soundEnabled);
+                document.getElementById('icon-sound-off').classList.toggle('hidden', soundEnabled);
+            });
+
+            // "Ai" Player Custom Dice Outcome Buttons
+            document.querySelectorAll('.ai-die-choice').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const chosen = parseInt(btn.getAttribute('data-val'), 10);
+                    document.getElementById('ai-dice-modal').classList.add('hidden');
+                    if (roomCode && !roomIsHost) sendRoomCommand({type:'rollChosen', value:chosen});
+                    else executeDiceRoll(chosen);
+                });
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function handleCanvasTap(clientX, clientY) {
+            pointer.x = (clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(pointer, camera);
+
+            // 1. Check click on 3D Dice
+            if (gameState.phase === 'IDLE') {
+                const diceHits = raycaster.intersectObject(diceMesh, false);
+                if (diceHits.length > 0) {
+                    handleDiceTrigger();
+                    return;
+                }
+            }
+
+            // 2. Check click on selectable tokens or highlight rings
+            if (gameState.phase === 'SELECT_TOKEN') {
+                const pIdx = gameState.currentTurn;
+                const candidateMeshes = [
+                    ...gameState.validTokens.map(tIdx => tokenMeshes[pIdx][tIdx]),
+                    ...selectableRings
+                ];
+                const hits = raycaster.intersectObjects(candidateMeshes, true);
+                if (hits.length > 0) {
+                    let obj = hits[0].object;
+                    while (obj && obj.userData.tokenIdx === undefined) {
+                        obj = obj.parent;
+                    }
+                    if (obj && obj.userData.tokenIdx !== undefined) {
+                        moveToken(pIdx, obj.userData.tokenIdx, gameState.diceValue);
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 7. MAIN RENDER & ANIMATION LOOP
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const elapsed = clock.getElapsedTime();
+
+            // 3D Dice Animation
+            if (gameState.animatingDice) {
+                gameState.diceAnimTime += 0.032;
+                const t = Math.min(gameState.diceAnimTime, 1);
+
+                // Parabolic bounce height
+                diceMesh.position.y = 1.15 + Math.abs(Math.sin(t * Math.PI * 2.5)) * (1 - t) * 2.6;
+
+                if (t < 0.72) {
+                    diceMesh.rotation.x += 0.28;
+                    diceMesh.rotation.y += 0.34;
+                    diceMesh.rotation.z += 0.22;
+                } else {
+                    // Smoothly settle onto exact chosen top face
+                    const settleT = (t - 0.72) / 0.28;
+                    diceMesh.quaternion.slerp(gameState.diceTargetQuat, settleT);
+                }
+
+                if (t >= 1) {
+                    diceMesh.position.y = 1.15;
+                    diceMesh.quaternion.copy(gameState.diceTargetQuat);
+                    onDiceRollComplete();
+                }
+            } else if (gameState.phase === 'IDLE' && gameState.started) {
+                // Gentle floating hover when waiting to roll
+                diceMesh.position.y = 1.15 + Math.sin(elapsed * 3.2) * 0.08;
+            }
+
+            // Pulse highlight rings for selectable tokens
+            selectableRings.forEach((ring, i) => {
+                const s = 1 + Math.sin(elapsed * 6 + i) * 0.16;
+                ring.scale.set(s, s, 1);
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            initThree();
+            animate();
+        };
+    </script>
+</body>
+</html>
