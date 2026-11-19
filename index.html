@@ -180,10 +180,12 @@
                     <button id="btn-create-room" class="py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white text-xs font-extrabold shadow-lg">CREATE ROOM</button>
                     <button id="btn-join-room" class="py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white text-xs font-extrabold">JOIN ROOM</button>
                 </div>
-                <div class="flex gap-2 mt-2">
-                    <input id="room-code-input" type="text" maxlength="6" placeholder="6-digit room code"
-                        class="min-w-0 flex-1 uppercase tracking-[0.2em] bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white text-center focus:outline-none focus:border-indigo-400">
-                    <select id="room-player-limit" class="bg-slate-800 border border-slate-700 rounded-xl px-2 text-xs text-white">
+                <div class="flex gap-2 mt-2 items-center">
+                    <div id="room-code-entry" class="hidden min-w-0 flex-1">
+                        <input id="room-code-input" type="text" maxlength="6" autocomplete="one-time-code" placeholder="Enter room code"
+                            class="w-full uppercase tracking-[0.2em] bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm font-bold text-white text-center focus:outline-none focus:border-indigo-400">
+                    </div>
+                    <select id="room-player-limit" class="bg-slate-800 border border-slate-700 rounded-xl px-2 py-2 text-xs text-white">
                         <option value="2">2 players</option>
                         <option value="3">3 players</option>
                         <option value="4" selected>4 players</option>
@@ -290,6 +292,7 @@
         let firebaseDb = null, firebaseReady = false, myUid = null;
         let roomCode = null, roomRef = null, roomIsHost = false, roomSeat = -1;
         let roomSnapshot = null, roomValueHandler = null, commandHandler = null;
+        let joinCodePromptOpen = false, roomActionBusy = false;
 
         function roomStatus(message) {
             const el = document.getElementById('room-status');
@@ -330,8 +333,16 @@
             return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         }
         async function createOnlineRoom() {
+            if (roomActionBusy) return;
+            roomActionBusy = true;
+            const createButton=document.getElementById('btn-create-room');
+            createButton.disabled=true;
+            try {
             if (!firebaseReady && !(await initFirebaseOnline())) return;
             if (roomCode) await leaveOnlineRoom(false);
+            joinCodePromptOpen=false;
+            document.getElementById('room-code-entry').classList.add('hidden');
+            document.getElementById('btn-join-room').textContent='JOIN ROOM';
             const code=makeRoomCode(), maxPlayers=Number(document.getElementById('room-player-limit').value)||4;
             const room={
                 hostUid:myUid, status:'lobby', maxPlayers,
@@ -343,14 +354,34 @@
             try {
                 await firebaseDb.ref('rooms/'+code).set(room);
                 roomCode=code; roomIsHost=true; roomSeat=0;
+                roomSnapshot=room;
                 attachRoomListeners();
-                roomStatus('Room created. Share the code and wait for players to join.');
-            } catch(e) { console.error(e); roomStatus('Could not create room: '+e.message); }
+                renderRoomLobby(room);
+                roomStatus('Room created! Your code is shown below. Share it with your friends.');
+            } catch(e) { console.error(e); roomStatus('Could not create room: '+(e.message||'Check Firebase database rules and connection.')); }
+            } finally {
+                roomActionBusy=false;
+                createButton.disabled=false;
+            }
         }
         async function joinOnlineRoom() {
+            if (roomActionBusy) return;
+            const entry=document.getElementById('room-code-entry');
+            const codeInput=document.getElementById('room-code-input');
+            if (entry.classList.contains('hidden')) {
+                entry.classList.remove('hidden');
+                joinCodePromptOpen=true;
+                document.getElementById('btn-join-room').textContent='JOIN NOW';
+                roomStatus('Enter the room code shared by the host, then tap JOIN NOW.');
+                codeInput.focus();
+                return;
+            }
             if (!firebaseReady && !(await initFirebaseOnline())) return;
-            const code=document.getElementById('room-code-input').value.trim().toUpperCase();
+            const code=codeInput.value.trim().toUpperCase();
             if (!/^[A-HJ-NP-Z2-9]{6}$/.test(code)) { roomStatus('Enter a valid 6-character room code.'); return; }
+            roomActionBusy=true;
+            const joinButton=document.getElementById('btn-join-room');
+            joinButton.disabled=true;
             const ref=firebaseDb.ref('rooms/'+code);
             try {
                 const snap=await ref.once('value'), room=snap.val();
@@ -367,9 +398,11 @@
                     roomStatus('That seat was just taken. Try joining again.'); return;
                 }
                 roomCode=code; roomIsHost=false; roomSeat=seat;
+                joinCodePromptOpen=false;
                 attachRoomListeners();
                 roomStatus('Joined! Waiting for the host to start the match.');
-            } catch(e) { console.error(e); roomStatus('Could not join room: '+e.message); }
+            } catch(e) { console.error(e); roomStatus('Could not join room: '+(e.message||'Check the room code and Firebase rules.')); }
+            finally { roomActionBusy=false; joinButton.disabled=false; }
         }
         function attachRoomListeners() {
             roomRef=firebaseDb.ref('rooms/'+roomCode);
@@ -504,6 +537,10 @@
             roomCode=null; roomRef=null; roomIsHost=false; roomSeat=-1;
             roomValueHandler=null; commandHandler=null; roomSnapshot=null;
             document.getElementById('room-lobby').classList.add('hidden');
+            document.getElementById('room-code-entry').classList.add('hidden');
+            document.getElementById('room-code-input').value='';
+            document.getElementById('btn-join-room').textContent='JOIN ROOM';
+            joinCodePromptOpen=false;
             document.getElementById('btn-start-game').classList.remove('hidden');
             document.getElementById('local-player-setup').classList.remove('hidden');
             if(showMessage) roomStatus('You left the room. You can create or join another room.');
@@ -1646,15 +1683,6 @@
                 if (!roomCode) return;
                 try { await navigator.clipboard.writeText(roomCode); roomStatus('Room code copied. Share it with your friends.'); }
                 catch(e) { roomStatus('Room code: '+roomCode+' — copy it manually.'); }
-            });
-            document.getElementById('btn-create-room').addEventListener('click', createOnlineRoom);
-            document.getElementById('btn-join-room').addEventListener('click', joinOnlineRoom);
-            document.getElementById('btn-start-online').addEventListener('click', startOnlineMatch);
-            document.getElementById('btn-leave-room').addEventListener('click', () => leaveOnlineRoom());
-            document.getElementById('btn-copy-room').addEventListener('click', async () => {
-                if (!roomCode) return;
-                try { await navigator.clipboard.writeText(roomCode); setRoomStatus('Room code copied. Share it with your friends.'); }
-                catch (e) { setRoomStatus('Room code: ' + roomCode + ' (select and copy it)'); }
             });
             document.getElementById('btn-play-again').addEventListener('click', () => {
                 document.getElementById('victory-modal').classList.add('hidden');
