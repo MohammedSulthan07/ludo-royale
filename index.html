@@ -1374,7 +1374,7 @@
             const allInYard = valid.every(idx => player.tokens[idx] === -1);
             if (valid.length === 1 || allInYard) {
                 setBanner(`${player.name} rolled ${val}!`);
-                setTimeout(() => moveToken(player.id, valid[0], val), 420);
+                setTimeout(() => moveToken(player.id, valid[0], val, true), 420);
                 return;
             }
 
@@ -1382,7 +1382,7 @@
             if (player.type === 'bot') {
                 const chosenToken = chooseBestBotToken(player, valid, val);
                 setBanner(`${player.name} rolled ${val}!`);
-                setTimeout(() => moveToken(player.id, chosenToken, val), 550);
+                setTimeout(() => moveToken(player.id, chosenToken, val, true), 550);
                 return;
             }
 
