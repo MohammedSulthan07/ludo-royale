@@ -1280,14 +1280,20 @@
             if (!gameState.started || gameState.phase !== 'IDLE') return false;
             const player = gameState.players[gameState.currentTurn];
             if (!player || player.type === 'bot') return false;
-            if (!roomCode) return true; // Local game: the device controls the current local turn.
-            // Online: only the authenticated device assigned to the active seat may roll.
-            return !!myUid && player.uid === myUid;
+            // Offline play remains turn-controlled locally.
+            if (!roomCode) return true;
+            // Online play requires an authenticated session AND an exact seat UID match.
+            // Never let the room host act for another seat merely because it owns the game state.
+            return !!(myUid && player.uid && player.uid === myUid);
         }
 
         // Triggered when user clicks Dice button or 3D Dice
         function handleDiceTrigger() {
-            if (!canCurrentPlayerAct()) return;
+            // Re-check authorization at the moment of action (not just when rendering).
+            if (!canCurrentPlayerAct()) {
+                if (roomCode) setBanner('Waiting for the assigned player to roll.');
+                return;
+            }
             const player = gameState.players[gameState.currentTurn];
             if (roomCode && !roomIsHost) {
                 if (player.name === 'Ai') document.getElementById('ai-dice-modal').classList.remove('hidden');
@@ -1612,6 +1618,12 @@
             setBanner(`${active.name}'s Turn — ${active.type === 'bot' ? 'CPU Thinking...' : 'Roll the Dice!'}`);
             document.getElementById('roll-btn-title').textContent = active.type === 'bot' ? `${active.name} (CPU)` : 'ROLL DICE';
             document.getElementById('roll-btn-sub').textContent = active.type === 'bot' ? 'Auto-rolling...' : (roomCode && active.uid !== myUid ? `Waiting for ${active.name}` : `${active.name}'s turn`);
+            const rollButton = document.getElementById('btn-roll-dice');
+            const authorized = canCurrentPlayerAct();
+            rollButton.disabled = !!roomCode && !authorized;
+            rollButton.classList.toggle('opacity-50', !!roomCode && !authorized);
+            rollButton.classList.toggle('cursor-not-allowed', !!roomCode && !authorized);
+            rollButton.classList.toggle('pulse-ring', authorized && gameState.phase === 'IDLE');
 
             gameState.players.forEach((p, idx) => {
                 const card = document.getElementById(`card-${idx}`);
