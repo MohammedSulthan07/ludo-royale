@@ -1275,27 +1275,31 @@
             }
         }
 
+        // Enforce per-seat control on every input path (UI button, 3D dice, touch).
+        function canCurrentPlayerAct() {
+            if (!gameState.started || gameState.phase !== 'IDLE') return false;
+            const player = gameState.players[gameState.currentTurn];
+            if (!player || player.type === 'bot') return false;
+            if (!roomCode) return true; // Local game: the device controls the current local turn.
+            // Online: only the authenticated device assigned to the active seat may roll.
+            return !!myUid && player.uid === myUid;
+        }
+
         // Triggered when user clicks Dice button or 3D Dice
         function handleDiceTrigger() {
-            if (gameState.phase !== 'IDLE') return;
+            if (!canCurrentPlayerAct()) return;
             const player = gameState.players[gameState.currentTurn];
-            if (player.type === 'bot') return;
             if (roomCode && !roomIsHost) {
-                if (player.uid !== myUid) return;
                 if (player.name === 'Ai') document.getElementById('ai-dice-modal').classList.remove('hidden');
                 else sendRoomCommand({type:'roll'});
                 return;
             }
-            if (roomCode && roomIsHost && player.uid && player.uid !== myUid) return;
             // SPECIAL MECHANIC: If active player's name is exactly "Ai", show number selector
             if (player.name === "Ai") {
                 document.getElementById('ai-dice-modal').classList.remove('hidden');
                 return;
             }
-
-            // Standard fair 1-6 dice roll for all other players
-            const rolled = Math.floor(Math.random() * 6) + 1;
-            executeDiceRoll(rolled);
+            executeDiceRoll(Math.floor(Math.random() * 6) + 1);
         }
 
         function executeDiceRoll(chosenValue) {
@@ -1754,6 +1758,7 @@
                 btn.addEventListener('click', () => {
                     const chosen = parseInt(btn.getAttribute('data-val'), 10);
                     document.getElementById('ai-dice-modal').classList.add('hidden');
+                    if (!canCurrentPlayerAct()) return;
                     if (roomCode && !roomIsHost) sendRoomCommand({type:'rollChosen', value:chosen});
                     else executeDiceRoll(chosen);
                 });
@@ -1774,7 +1779,7 @@
             raycaster.setFromCamera(pointer, camera);
 
             // 1. Check click on 3D Dice
-            if (gameState.phase === 'IDLE') {
+            if (canCurrentPlayerAct()) {
                 const diceHits = raycaster.intersectObject(diceMesh, false);
                 if (diceHits.length > 0) {
                     handleDiceTrigger();
